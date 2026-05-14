@@ -6,78 +6,100 @@ import { useLanguage } from '@/lib/language-context'
 import { GlassCard } from '@/components/ui/glass-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { 
-  Users, 
-  ArrowLeftRight, 
-  CircleDot, 
-  Megaphone, 
   ArrowLeft,
   Loader2,
   Search,
-  ExternalLink,
-  Check,
-  X,
   Edit,
   Trash2,
-  DollarSign
+  Save,
+  X,
+  User
 } from 'lucide-react'
 
-interface Stats {
-  totalUsers: number
-  pendingDeposits: number
-  pendingWithdrawals: number
-  totalBalance: number
+interface Profile {
+  id: string
+  email: string
+  display_name: string | null
+  phone: string | null
+  referral_code: string
+  referred_by: string | null
+  balance: number
+  created_at: string
 }
 
-export default function AdminPage() {
-  const [stats, setStats] = useState<Stats | null>(null)
+export default function AdminUsersPage() {
+  const [users, setUsers] = useState<Profile[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<Profile[]>([])
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [editingUser, setEditingUser] = useState<string | null>(null)
+  const [editBalance, setEditBalance] = useState('')
   const supabase = createClient()
   const { t } = useLanguage()
-  const router = useRouter()
 
   useEffect(() => {
-    const fetchStats = async () => {
-      // Fetch total users
-      const { count: userCount } = await supabase
+    const fetchUsers = async () => {
+      const { data } = await supabase
         .from('profiles')
-        .select('*', { count: 'exact', head: true })
-
-      // Fetch pending deposits
-      const { count: depositCount } = await supabase
-        .from('transactions')
-        .select('*', { count: 'exact', head: true })
-        .eq('type', 'deposit')
-        .eq('status', 'pending')
-
-      // Fetch pending withdrawals
-      const { count: withdrawalCount } = await supabase
-        .from('transactions')
-        .select('*', { count: 'exact', head: true })
-        .eq('type', 'withdrawal')
-        .eq('status', 'pending')
-
-      // Fetch total balance
-      const { data: balances } = await supabase
-        .from('profiles')
-        .select('balance')
-
-      const totalBalance = balances?.reduce((sum, p) => sum + Number(p.balance), 0) || 0
-
-      setStats({
-        totalUsers: userCount || 0,
-        pendingDeposits: depositCount || 0,
-        pendingWithdrawals: withdrawalCount || 0,
-        totalBalance,
-      })
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (data) {
+        setUsers(data)
+        setFilteredUsers(data)
+      }
       setLoading(false)
     }
 
-    fetchStats()
+    fetchUsers()
   }, [supabase])
+
+  useEffect(() => {
+    if (search) {
+      const filtered = users.filter(u => 
+        u.email.toLowerCase().includes(search.toLowerCase()) ||
+        u.display_name?.toLowerCase().includes(search.toLowerCase()) ||
+        u.referral_code.toLowerCase().includes(search.toLowerCase())
+      )
+      setFilteredUsers(filtered)
+    } else {
+      setFilteredUsers(users)
+    }
+  }, [search, users])
+
+  const handleEditBalance = (userId: string, currentBalance: number) => {
+    setEditingUser(userId)
+    setEditBalance(currentBalance.toString())
+  }
+
+  const handleSaveBalance = async (userId: string) => {
+    const newBalance = parseFloat(editBalance)
+    if (isNaN(newBalance) || newBalance < 0) return
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ balance: newBalance })
+      .eq('id', userId)
+
+    if (!error) {
+      setUsers(users.map(u => 
+        u.id === userId ? { ...u, balance: newBalance } : u
+      ))
+      setEditingUser(null)
+    }
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Sei sicuro di voler eliminare questo utente?')) return
+
+    const { error } = await supabase.auth.admin.deleteUser(userId)
+    
+    if (!error) {
+      setUsers(users.filter(u => u.id !== userId))
+    }
+  }
 
   if (loading) {
     return (
@@ -87,72 +109,110 @@ export default function AdminPage() {
     )
   }
 
-  const menuItems = [
-    { href: '/admin/users', icon: Users, label: t('users'), count: stats?.totalUsers },
-    { href: '/admin/transactions', icon: ArrowLeftRight, label: t('transactions'), count: (stats?.pendingDeposits || 0) + (stats?.pendingWithdrawals || 0) },
-    { href: '/admin/wheel', icon: CircleDot, label: t('wheelSettings') },
-    { href: '/admin/banner', icon: Megaphone, label: t('bannerSettings') },
-  ]
-
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 glass border-b border-border/50">
         <div className="flex items-center justify-between h-14 px-4 max-w-4xl mx-auto">
-          <Link href="/dashboard" className="p-2 -ml-2 text-muted-foreground hover:text-foreground">
+          <Link href="/admin" className="p-2 -ml-2 text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-6 w-6" />
           </Link>
-          <h1 className="text-lg font-semibold text-glow-purple">{t('adminDashboard')}</h1>
+          <h1 className="text-lg font-semibold">{t('users')}</h1>
           <div className="w-10" />
         </div>
       </header>
 
-      <main className="px-4 py-6 max-w-4xl mx-auto space-y-6">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-2 gap-4">
-          <GlassCard className="text-center">
-            <Users className="h-6 w-6 text-primary mx-auto mb-2" />
-            <p className="text-2xl font-bold">{stats?.totalUsers}</p>
-            <p className="text-xs text-muted-foreground">{t('users')}</p>
-          </GlassCard>
-          <GlassCard className="text-center">
-            <DollarSign className="h-6 w-6 text-neon-gold mx-auto mb-2" />
-            <p className="text-2xl font-bold">${stats?.totalBalance.toFixed(2)}</p>
-            <p className="text-xs text-muted-foreground">Total Balance</p>
-          </GlassCard>
+      <main className="px-4 py-6 max-w-4xl mx-auto space-y-4">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by email, name or referral code..."
+            className="pl-10 bg-secondary/50"
+          />
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-4">
-          <GlassCard glow={stats?.pendingDeposits ? 'emerald' : 'none'} className="text-center">
-            <p className="text-3xl font-bold text-neon-emerald">{stats?.pendingDeposits}</p>
-            <p className="text-sm text-muted-foreground">Pending Deposits</p>
-          </GlassCard>
-          <GlassCard glow={stats?.pendingWithdrawals ? 'pink' : 'none'} className="text-center">
-            <p className="text-3xl font-bold text-neon-pink">{stats?.pendingWithdrawals}</p>
-            <p className="text-sm text-muted-foreground">Pending Withdrawals</p>
-          </GlassCard>
-        </div>
-
-        {/* Menu Items */}
+        {/* Users List */}
         <div className="space-y-3">
-          {menuItems.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <GlassCard className="flex items-center justify-between hover:glow-purple transition-all cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-primary/20">
-                    <item.icon className="h-5 w-5 text-primary" />
+          {filteredUsers.map((user) => (
+            <GlassCard key={user.id}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="p-2 rounded-xl bg-primary/20 shrink-0">
+                    <User className="h-5 w-5 text-primary" />
                   </div>
-                  <span className="font-medium">{item.label}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{user.display_name || 'No name'}</p>
+                    <p className="text-sm text-muted-foreground truncate">{user.email}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Code: <span className="font-mono">{user.referral_code}</span>
+                      {user.referred_by && (
+                        <span className="ml-2">Ref: <span className="font-mono">{user.referred_by}</span></span>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                {item.count !== undefined && (
-                  <span className="px-3 py-1 rounded-full bg-secondary text-sm">
-                    {item.count}
-                  </span>
-                )}
-              </GlassCard>
-            </Link>
+                
+                <div className="text-right shrink-0">
+                  {editingUser === user.id ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={editBalance}
+                        onChange={(e) => setEditBalance(e.target.value)}
+                        className="w-24 h-8 text-sm"
+                        step="0.01"
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleSaveBalance(user.id)}
+                        className="h-8 w-8"
+                      >
+                        <Save className="h-4 w-4 text-neon-emerald" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEditingUser(null)}
+                        className="h-8 w-8"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="font-bold text-neon-gold">${user.balance.toFixed(2)}</p>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleEditBalance(user.id, user.balance)}
+                          className="h-7 w-7"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleDeleteUser(user.id)}
+                          className="h-7 w-7 text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </GlassCard>
           ))}
         </div>
+
+        {filteredUsers.length === 0 && (
+          <p className="text-center text-muted-foreground py-8">Nessun utente trovato</p>
+        )}
       </main>
     </div>
   )
