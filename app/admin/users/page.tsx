@@ -39,13 +39,26 @@ export default function AdminUsersPage() {
   const supabase = createClient()
   const { t } = useLanguage()
 
-  useEffect(() => {
+useEffect(() => {
     const fetchUsers = async () => {
+      // 1. Ottieni l'utente attualmente loggato
+      const { data: { user } } = await supabase.auth.getUser()
+
+      // 2. INSERISCI QUI LA TUA EMAIL
+      const adminEmail = "wealthnode2026@gmail.com" 
+
+      // 3. Verifica se l'utente è autorizzato
+      if (!user || user.email !== adminEmail) {
+        window.location.href = '/' // Reindirizza alla home se non sei tu
+        return
+      }
+
+      // Se sei tu, carica i dati
       const { data } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false })
-      
+     
       if (data) {
         setUsers(data)
         setFilteredUsers(data)
@@ -55,7 +68,6 @@ export default function AdminUsersPage() {
 
     fetchUsers()
   }, [supabase])
-
   useEffect(() => {
     if (search) {
       const filtered = users.filter(u => 
