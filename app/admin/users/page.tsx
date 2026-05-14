@@ -48,7 +48,7 @@ useEffect(() => {
       const adminEmail = "wealthnode2026@gmail.com" 
 
       // 3. Verifica se l'utente è autorizzato
-      if (!user || user.email !== adminEmail) {
+      if (!user || user.email !== wealthnode2026@gmail.com) {
         window.location.href = '/' // Reindirizza alla home se non sei tu
         return
       }
